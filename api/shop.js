@@ -1,66 +1,35 @@
-const SOURCE = 'https://itemshop.gg/valorant';
-
-const decode = (s) => s
-  .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'")
-  .replace(/&nbsp;/g, ' ')
-  .replace(/<br\s*\/?>(\n)?/gi, ' ')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/\s+/g, ' ').trim();
-
-const images = (html) => {
-  const out = [];
-  const re = /<img\b[^>]*(?:src|data-src)=["']([^"']+)["'][^>]*>/gi;
-  let m;
-  while ((m = re.exec(html))) {
-    const tag = m[0]; const src = m[1];
-    const alt = (tag.match(/\balt=["']([^"']*)["']/i) || [,''])[1];
-    if ((src.includes('cdn.locker.gg') || src.includes('valorant-api.com')) && alt && !/^image$/i.test(alt)) {
-      out.push({name: decode(alt.replace(/^Image:\s*/i,'')), image: src});
-    }
-  }
-  return out;
-};
-
-const prices = (text) => [...text.matchAll(/\b\d{2,}(?:,\d{3})*\b/g)].map(x => Number(x[0].replace(/,/g,'')));
-
-function parseShop(html) {
-  const cleanHtml = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '');
-  const sections = [...cleanHtml.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)].map(m => ({title: decode(m[1]), index: m.index, end: m.index + m[0].length}));
-  const featuredIndex = sections.findIndex(s => s.title.toLowerCase() === 'featured bundles');
-  if (featuredIndex < 0) throw new Error('Featured Bundles heading not found');
-  const faqIndex = sections.findIndex((s, i) => i > featuredIndex && s.title.toLowerCase().includes('valorant'));
-  const stop = faqIndex > 0 ? faqIndex : sections.length;
-
-  const featuredStart = sections[featuredIndex].end;
-  const featuredEnd = sections[featuredIndex + 1]?.index ?? cleanHtml.length;
-  const featuredChunk = cleanHtml.slice(featuredStart, featuredEnd);
-  const featuredImgs = images(featuredChunk);
-  const featuredPrices = prices(decode(featuredChunk));
-  const featuredNames = featuredImgs.filter((x,i,a)=>a.findIndex(y=>y.name===x.name)===i).slice(0, 8);
-
-  const detailSections = [];
-  for (let i = featuredIndex + 1; i < stop; i++) {
-    const s = sections[i]; const end = sections[i+1]?.index ?? cleanHtml.length;
-    const chunk = cleanHtml.slice(s.end, end);
-    const imgs = images(chunk).filter((x,j,a)=>a.findIndex(y=>y.name===x.name)===j);
-    const ps = prices(decode(chunk));
-    detailSections.push({name:s.title, items:imgs.map((img,j)=>({name:img.name,type:'cosmetic',image:img.image,price:ps[j] ?? null}))});
-  }
-
-  return featuredNames.map((b,i) => {
-    const detail = detailSections.find(d=>d.name.toLowerCase()===b.name.toLowerCase()) || detailSections[i];
-    return {name:b.name,image:b.image,price:featuredPrices[i]??null,items:detail?.items||[]};
-  }).filter(x=>x.name && !/featured bundles/i.test(x.name));
+const { openSession, bearer } = require('./_session');
+const VP = '85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741';
+const RAD = 'e59aa87c-4cbf-517a-5983-6e81511be9b7';
+const PLATFORM = 'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9';
+let assets = null;
+async function loadAssets(){
+  if(assets) return assets;
+  const r=await fetch('https://valorant-api.com/v1/weapons/skins');
+  if(!r.ok) throw new Error('Could not load VALORANT skin metadata.');
+  const skins=(await r.json()).data||[]; const byId=new Map();
+  for(const skin of skins){byId.set(String(skin.uuid).toLowerCase(),skin);for(const level of skin.levels||[])byId.set(String(level.uuid).toLowerCase(),skin)}
+  assets=byId; return assets;
 }
-
-export default async function handler(req,res){
+async function clientVersion(){try{const r=await fetch('https://valorant-api.com/v1/version');if(r.ok)return (await r.json()).data?.riotClientVersion||''}catch{}return ''}
+async function riotJson(url,s,method='GET',body){
+  const v=await clientVersion(); const r=await fetch(url,{method,headers:{Authorization:`Bearer ${s.accessToken}`,'X-Riot-Entitlements-JWT':s.entitlementsToken,'X-Riot-ClientPlatform':PLATFORM,...(v?{'X-Riot-ClientVersion':v}:{}),'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+  const text=await r.text(); let d={}; try{d=JSON.parse(text)}catch{}
+  if(!r.ok){if(r.status===400&&d.errorCode==='BAD_CLAIMS')throw new Error('Your Riot session expired. Please sign in again.');if(r.status===429)throw new Error('VALORANT rate-limited the request. Please try again shortly.');throw new Error(`VALORANT store request failed (${r.status}).`)}
+  return d;
+}
+module.exports=async function handler(req,res){
+  if(req.method!=='GET')return res.status(405).json({ok:false,error:'GET required'});
+  const session=openSession(bearer(req));
+  if(!session)return res.status(401).json({ok:false,signedIn:false,error:'Sign in again.'});
   try{
-    const r=await fetch(SOURCE,{headers:{'user-agent':'VALORANT-Shop-Live/1.0'}});
-    if(!r.ok) throw new Error(`upstream ${r.status}`);
-    const html=await r.text(); const bundles=parseShop(html);
-    res.setHeader('Cache-Control','s-maxage=60, stale-while-revalidate=300');
-    res.status(200).json({ok:true,source:SOURCE,fetchedAt:new Date().toISOString(),bundles});
-  }catch(e){
-    res.status(502).json({ok:false,error:'Live store source is temporarily unavailable.'});
-  }
-}
+    const store=await riotJson(`https://pd.${session.shard}.a.pvp.net/store/v3/storefront/${session.puuid}`,session,'POST',{});
+    let wallet={}; try{wallet=await riotJson(`https://pd.${session.shard}.a.pvp.net/store/v1/wallet/${session.puuid}`,session)}catch{}
+    const byId=await loadAssets();
+    const raw=store?.SkinsPanelLayout?.SingleItemStoreOffers||store?.SkinsPanelLayout?.SingleItemOffers||[];
+    const offers=raw.map(o=>{const id=String(o.OfferID||'').toLowerCase();const rewardId=String(o.Rewards?.[0]?.ItemID||'').toLowerCase();const skin=byId.get(id)||byId.get(rewardId);return {uuid:skin?.uuid||o.OfferID,name:skin?.displayName||'Unknown Skin',image:skin?.displayIcon||skin?.chromas?.[0]?.fullRender||'',price:Number(o.Cost?.[VP]??0),tier:skin?.contentTierUuid||null}});
+    const remaining=Number(store?.SkinsPanelLayout?.SingleItemOffersRemainingDurationInSeconds||0);
+    res.setHeader('Cache-Control','private, no-store');
+    res.status(200).json({ok:true,account:session.account,fetchedAt:new Date().toISOString(),expiresAt:Date.now()+remaining*1000,secondsRemaining:remaining,offers,wallet:{vp:Number(wallet?.Balances?.[VP]??0),radianite:Number(wallet?.Balances?.[RAD]??0)}});
+  }catch(e){console.error('Shop fetch error:',e.message);res.status(502).json({ok:false,error:e.message||'Could not load your shop.'})}
+};
