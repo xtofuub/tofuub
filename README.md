@@ -1,19 +1,32 @@
 # ValoShopTracker
 
-Vercel-ready VALORANT shop tracker with Riot Sign On (RSO) account linking.
+Unofficial VALORANT personal-shop viewer designed for Vercel.
 
-Riot's current VALORANT developer policy identifies online store tracking/updates as an unapproved API use case and says the technology for a player's personalized daily shop does not currently exist in the official API. This project therefore does not fabricate or scrape a private shop.
+## Login flow
 
-The project includes the official RSO OAuth login flow and server-side Riot account verification, plus the live shared/featured rotation.
+1. Click **Open Riot Login**.
+2. Riot handles the authentication in its own page.
+3. Riot redirects to `http://localhost/redirect#...`.
+4. Copy the full URL from the browser address bar and paste it into ValoShopTracker.
+5. The backend extracts the short-lived access/id tokens, requests an entitlements token and region from Riot, and creates an encrypted short-lived ValoShopTracker session.
+6. The `/api/shop` endpoint uses that authenticated session to request the player's personal daily storefront.
 
-## Vercel environment variables
+Users never enter their Riot password into this app.
 
-Configure these for Riot login:
+## Vercel environment variable
 
-- `RSO_CLIENT_ID`
-- `RSO_CLIENT_SECRET`
-- `RSO_SESSION_SECRET` — long random secret
-- `RSO_REDIRECT_URI` — `https://YOUR_DOMAIN/api/auth-callback`
-- `APP_BASE_URL` — `https://YOUR_DOMAIN` (optional fallback)
+Set:
 
-RSO requires an approved Riot production application and RSO client. Riot credentials are entered only on Riot's own authorization page, never into this site.
+- `SESSION_SECRET` — long random secret used to encrypt application sessions.
+
+Generate one with:
+
+```bash
+openssl rand -hex 32
+```
+
+## Important
+
+This is an unofficial integration using Riot authentication/client and VALORANT storefront endpoints rather than an approved public store API. Riot may change or block these endpoints at any time.
+
+The implementation is based on the architecture used by SkinPeek and the newer Valorant Shop Checker project, but the code in this repository is independently implemented.
