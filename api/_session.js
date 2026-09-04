@@ -3,8 +3,9 @@ const crypto = require('crypto');
 const SESSION_TTL_MS = 55 * 60 * 1000;
 
 function key() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) throw new Error('SESSION_SECRET is not configured');
+  // Canonical secret for the app. Keep SESSION_SECRET as a backwards-compatible fallback.
+  const secret = process.env.RSO_SESSION_SECRET || process.env.SESSION_SECRET;
+  if (!secret) throw new Error('RSO_SESSION_SECRET is not configured');
   return crypto.createHash('sha256').update(secret).digest();
 }
 
