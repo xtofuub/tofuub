@@ -1,19 +1,19 @@
-# VALORANT Shop Live
+# ValoShopTracker
 
-A fresh Vercel-ready VALORANT shop tracker.
+Vercel-ready VALORANT shop tracker with Riot Sign On (RSO) account linking.
 
-- No Riot password or session-token collection.
-- Pulls the current shared VALORANT store rotation from itemshop.gg server-side.
-- Shows current featured bundles and the cosmetics inside them.
-- Search and wishlist state are stored locally in the browser.
-- Uses a short cache to avoid hammering the upstream source.
+Riot's current VALORANT developer policy identifies online store tracking/updates as an unapproved API use case and says the technology for a player's personalized daily shop does not currently exist in the official API. This project therefore does not fabricate or scrape a private shop.
 
-## Deploy to Vercel
+The project includes the official RSO OAuth login flow and server-side Riot account verification, plus the live shared/featured rotation.
 
-Import `xtofuub/tofuub` into Vercel and deploy the repository root. No build command is required.
+## Vercel environment variables
 
-## Important limitation
+Configure these for Riot login:
 
-Riot currently documents online store tracking as an unapproved VALORANT API use case and does not expose a public API for a player's personalized daily offers. This project therefore tracks the shared/featured store rotation rather than pretending it is a user's private shop.
+- `RSO_CLIENT_ID`
+- `RSO_CLIENT_SECRET`
+- `RSO_SESSION_SECRET` — long random secret
+- `RSO_REDIRECT_URI` — `https://YOUR_DOMAIN/api/auth-callback`
+- `APP_BASE_URL` — `https://YOUR_DOMAIN` (optional fallback)
 
-Data source: https://itemshop.gg/valorant
+RSO requires an approved Riot production application and RSO client. Riot credentials are entered only on Riot's own authorization page, never into this site.
